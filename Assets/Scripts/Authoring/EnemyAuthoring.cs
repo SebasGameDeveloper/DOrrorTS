@@ -21,6 +21,9 @@ namespace Authoring
                 AddComponent(entity, new Components.FreezeState());
                 AddComponent(entity, new Components.AudioParams());
                 AddComponent(entity, new Components.EnemyStats {PursuitSpeed = authoring.pursuitSpeed});
+                
+                
+                AddComponentObject(entity, authoring.gameObject);
                 //Hybrid para linkear GameObjects para Animator/Audio y NavMeshAgent
                 AddComponentObject(entity, authoring.GetComponent<Animator>());
                 AddComponentObject(entity, authoring.GetComponent<AudioSource>());

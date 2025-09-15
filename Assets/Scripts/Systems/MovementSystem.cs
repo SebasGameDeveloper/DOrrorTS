@@ -1,7 +1,7 @@
+using Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Transforms;
-using Unity.Jobs;
 
 namespace Systems
 {
@@ -14,7 +14,7 @@ namespace Systems
             var deltaTime = SystemAPI.Time.DeltaTime;
             var playerPos = SystemAPI.GetSingleton<LocalTransform>().Position;
 
-            var job = new PursiotJob
+            var job = new PursuitJob
             {
                 DeltaTime = deltaTime,
                 PlayerPos = playerPos
