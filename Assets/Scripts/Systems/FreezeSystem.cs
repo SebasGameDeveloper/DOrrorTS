@@ -6,18 +6,18 @@ using UnityEngine;
 namespace Systems
 {
     [BurstCompile]
+    [UpdateAfter(typeof(CameraSyncSystem))]
     public partial struct FreezeSystem : ISystem
     {
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var cameraPos = Camera.main.transform.position;
-            var cameraForward = Camera.main.transform.forward;
+            var cameraData = SystemAPI.GetSingleton<Components.MainCameraData>();
 
             var job = new FreezeJob
             {
-                CameraPos = cameraPos,
-                CameraForward = cameraForward
+                CameraPos = cameraData.Position,
+                CameraForward = cameraData.Forward,
             };
             job.ScheduleParallel();
         }
