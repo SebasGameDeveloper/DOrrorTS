@@ -10,7 +10,7 @@ using UnityEngine.Jobs;
 
 namespace Systems
 {
-    [BurstCompile]  // Habilita Burst para partes compilables
+    [BurstCompile] 
     public partial struct HybridSyncSystem : ISystem
     {
         private EntityQuery enemyQuery;
@@ -18,67 +18,56 @@ namespace Systems
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            // Define query para enemigos con hybrid components
-            enemyQuery = state.GetEntityQuery(
-                ComponentType.ReadOnly<LocalTransform>(),
-                ComponentType.ReadOnly<Components.FreezeState>(),
-                ComponentType.ReadOnly<Components.Moveable>(), 
-                ComponentType.ReadOnly<Animator>() // Incluye ComponentObject para Animator
-            );
+            var builder = new EntityQueryBuilder(Allocator.Temp)
+                .WithAllRW<LocalTransform>()
+                .WithAllRW<Components.FreezeState>()
+                .WithAllRW<Components.Moveable>()
+                .WithAllRW<Components.EnemyStats>();
+            enemyQuery = builder.Build(ref state); 
+            builder.Dispose();  //Manual dispose para el TempAllocator :) 
         }
-
-        [BurstCompile]  // Burst para la parte no-hybrid (el sync anim no lo es)
-        public void OnUpdate(ref SystemState state)
+        
+        public void OnUpdate(ref SystemState state)  
         {
-            // Crear TransformAccessArray para batch sync de Transforms (de GO)
             var transformArray = new TransformAccessArray(enemyQuery.CalculateEntityCount());
-
-            // Fill transforms from GO: Iterar entidades y agregar Transform del GO ligado
             var entities = enemyQuery.ToEntityArray(Allocator.TempJob);
+            var em = state.EntityManager;  //Cache EntityManager para accesos repetidos /Puede variar
+
+            // Sincronización de transforms
             for (int i = 0; i < entities.Length; i++)
             {
-                var go = state.EntityManager.GetComponentObject<GameObject>(entities[i]);  // Asume added en Baker
+                var go = em.GetComponentObject<GameObject>(entities[i]); 
                 transformArray.Add(go.transform);
             }
-
-            // Schedule job para sync positions (ECS -> GO)
+            
             var syncJob = new SyncJob
             {
-                Entities = entities,  // Compartido, no nuevo allocation
-                EntityManager = state.EntityManager
+                Entities = entities,  
+                EntityManager = em  // Pasa EM si SyncJob necesita, pero idealmente usa ComponentLookup para unmanaged
             };
-            state.Dependency = syncJob.Schedule(transformArray, state.Dependency);  // Chain dependency, no Complete() bloqueante
+            state.Dependency = syncJob.Schedule(transformArray, state.Dependency);  
+            state.Dependency.Complete(); 
+            
+            foreach (var entity in entities)
+            {
+                var freeze = em.GetComponentData<Components.FreezeState>(entity);  //Unmanaged
+                var anim = em.GetComponentObject<Animator>(entity);  //Managed
 
-            // Post-job: Apply anim freeze from FreezeState (main thread only, sin Burst)
-            state.Dependency.Complete();  // Completa todo antes de ForEach (si necesario para sync)
-
-            SystemAPI.QueryBuilder()
-                .WithAll<Components.EnemyStats, Animator>()  // Filtra solo enemigos
-                .WithComponentObject<Animator>(true)  // Explícito para hybrid, resuelve analyzers
-                .Build()
-                .ForEach((in Components.FreezeState freeze, Animator anim) =>
+                if (anim != null)  //Null check
                 {
-                    if (freeze.IsFrozen)
-                    {
-                        anim.speed = 0f;
-                    }
-                    else
-                    {
-                        anim.speed = 1f;
-                    }
-                    anim.Play(0, -1, freeze.FrozenAnimTime);  // Reproduce desde frame congelado
-                })
-                .WithoutBurst()  // Sin Burst: Animator no thread-safe
-                .Run();  // Run: Main thread requerido para Animator
+                    anim.speed = freeze.IsFrozen ? 0f : 1f;
+                    anim.Play(0, -1, freeze.FrozenAnimTime); 
+                }
+            }
 
-            // Cleanup (auto con Dependency, pero manual para TempJob)
-            transformArray.Dispose(/*state.Dependency*/);
+            transformArray.Dispose();
             entities.Dispose(state.Dependency);
         }
 
+        [BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
-            // Cleanup
+            // Limpieza si necesario
         }
     }
 }

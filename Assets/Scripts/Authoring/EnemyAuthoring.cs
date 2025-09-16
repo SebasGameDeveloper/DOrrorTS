@@ -22,9 +22,13 @@ namespace Authoring
                 AddComponent(entity, new Components.AudioParams());
                 AddComponent(entity, new Components.EnemyStats {PursuitSpeed = authoring.pursuitSpeed});
                 
+                //Hybrid links 
+                DependsOn(authoring.gameObject);
+                DependsOn(authoring.GetComponent<Animator>());
+                DependsOn(authoring.GetComponent<AudioSource>());
+                DependsOn(authoring.GetComponent<NavMeshAgent>());
                 
                 AddComponentObject(entity, authoring.gameObject);
-                //Hybrid para linkear GameObjects para Animator/Audio y NavMeshAgent
                 AddComponentObject(entity, authoring.GetComponent<Animator>());
                 AddComponentObject(entity, authoring.GetComponent<AudioSource>());
                 AddComponentObject(entity, authoring.GetComponent<NavMeshAgent>());
