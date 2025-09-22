@@ -1,52 +1,101 @@
-using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Player
 {
+    [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
-        [SerializeField] private float moveSpeed = 5f;
-        [SerializeField] private Camera playerCamera;
-        [SerializeField] private float mouseSensitivity = 2f;
+        [Header("Refs")]
+    [SerializeField] private Camera playerCamera;
 
-        private PlayerInputActions inputActions;
-        private CharacterController characterController;
-        private Vector2 mouseInput;
-        private float xRotation = 0f;
+    [Header("Movimiento")]
+    public float moveSpeed = 4.5f;
+    public float gravity = -9.81f;
+    public float jumpForce = 3.5f;
 
-        private void Awake()
-        {
-            inputActions = new PlayerInputActions();
-            characterController = GetComponent<CharacterController>();
+    [Header("Mirada")]
+    public float mouseSensitivity = 0.1f;
+    public float minPitch = -80f;
+    public float maxPitch = 80f;
 
-            Cursor.lockState = CursorLockMode.Locked;
-        }
-        
-        private void OnEnable() => inputActions.Enable();
-        private void OnDisable() => inputActions.Disable();
-        
-        private void Update()
+    [Header("Input")]
+    public InputActionAsset actionsAsset;
+    [SerializeField] private string actionMapName = "Player";
+    [SerializeField] private string moveAction = "Move";
+    [SerializeField] private string lookAction = "Look";
+    [SerializeField] private string jumpAction = "Jump";
+
+    private CharacterController controller;
+    private InputAction move, look, jump;
+
+    private Vector2 moveInput, lookInput;
+    private float pitch;
+    private Vector3 velocity;
+    private bool jumpPressed;
+
+    private void Awake()
+    {
+        controller = GetComponent<CharacterController>();
+        if (!playerCamera) playerCamera = Camera.main;
+
+        var map = actionsAsset.FindActionMap(actionMapName, true);
+        move = map.FindAction(moveAction, true);
+        look = map.FindAction(lookAction, true);
+        jump = map.FindAction(jumpAction, true);
+
+        move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
+        move.canceled  += _   => moveInput = Vector2.zero;
+
+        look.performed += ctx => lookInput = ctx.ReadValue<Vector2>();
+        look.canceled  += _   => lookInput = Vector2.zero;
+
+        jump.performed += _ => jumpPressed = true;
+    }
+
+    private void OnEnable()
+    {
+        move.Enable(); look.Enable(); jump.Enable();
+    }
+
+    private void OnDisable()
+    {
+        move.Disable(); look.Disable(); jump.Disable();
+    }
+
+    private void Update()
+    {
+        //Mirada
+        float yaw = lookInput.x * mouseSensitivity;
+        float pitchDelta = -lookInput.y * mouseSensitivity;
+
+        transform.Rotate(0f, yaw, 0f);
+        pitch = Mathf.Clamp(pitch + pitchDelta, minPitch, maxPitch);
+        if (playerCamera)
+            playerCamera.transform.localEulerAngles = new Vector3(pitch, 0f, 0f);
+
+        //Movimiento plano
+        Vector3 inputDir = new Vector3(moveInput.x, 0f, moveInput.y);
+        Vector3 worldDir = transform.TransformDirection(inputDir);
+        Vector3 horizontal = worldDir * moveSpeed;
+
+        //Gravedad y salto
+        if (controller.isGrounded)
         {
-            HandleMovement();
-            HandleMouseLook();
+            velocity.y = -1f; //pegado al piso
+            if (jumpPressed)
+            {
+                velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+                jumpPressed = false;
+            }
         }
-        
-        private void HandleMovement()
+        else
         {
-            Vector2 input = inputActions.Player.Move.ReadValue<Vector2>();
-            Vector3 moveDirection = (transform.right * input.x + transform.forward * input.y) * moveSpeed;
-            moveDirection.y = Physics.gravity.y;
-            characterController.Move(moveDirection * Time.deltaTime);
+            velocity.y += gravity * Time.deltaTime;
         }
-        
-        private void HandleMouseLook()
-        {
-            mouseInput = inputActions.Player.Look.ReadValue<Vector2>();
-            transform.Rotate(Vector3.up * mouseInput.x * mouseSensitivity);
-            xRotation -= mouseInput.y * mouseSensitivity;
-            xRotation = Mathf.Clamp(xRotation, -90f, 90f);
-            playerCamera.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        }
+
+        Vector3 moveVec = (horizontal + new Vector3(0, velocity.y, 0)) * Time.deltaTime;
+        controller.Move(moveVec);
+    }
     }
 }
